@@ -1,5 +1,6 @@
 const express = require("express");
 const http = require("http");
+const dgram = require('dgram');
 
 let app = express();
 app.set("port", 8082);
@@ -71,6 +72,12 @@ function processMessage(req, res) {
                 json.cport = 8082;
                 json.cars = [shufflecarname];
                 json.name = "WAT: Shuffle Racing Test";
+
+                sessiondata.track = json.track;
+                sessiondata.clients = json.clients;
+                sessiondata.timeleft = json.timeleft;
+                sessiondata.session = json.session;
+
                 response = JSON.stringify(json);
             }
 
@@ -88,6 +95,13 @@ function processMessage(req, res) {
     reqs.end();
 }
 
+let sessiondata = {
+    track: "",
+    clients: 0,
+    timeleft: 0,
+    session: 0
+};
+    
 function init() {
     let url = new URL("http://127.0.0.1:8081");
     var options = {
@@ -105,6 +119,11 @@ function init() {
         });
         incoming.on('end', () => {
             console.log(response);
+            let resjson = JSON.parse(response);
+            sessiondata.track = resjson.track;
+            sessiondata.clients = resjson.clients;
+            sessiondata.timeleft = resjson.timeleft;
+            sessiondata.session = resjson.session;
 
             let regurl = new URL("http://93.57.10.21/");
             let regoptions = {
@@ -127,11 +146,82 @@ function init() {
         });
     });
 
+    // setup udp server to send ks server the wrong port
+    let server = dgram.createSocket('udp4');
+    server.on('listening', function () {
+        var address = server.address();
+        console.log('UDP Server listening on ' + address.address + ':' + address.port);
+    });
+    server.on('message', function (message, remote) {
+        console.log(remote.address + ':' + remote.port + ' - ' + message);
+
+        // this kinda hardcoded but it seems fine so far
+        let buff = Buffer.from(new Uint8Array([0xc8, 0x92, 0x1f]));
+
+        server.send(buff, 0, buff.length, remote.port, remote.address, function (err, bytes) {
+            if (err) throw err;
+            console.log("port sent back to ks");
+            server.close();
+
+            setInterval(ksPing, 10000);
+        });
+    });
+    server.bind(9600, "0.0.0.0");
+
+    reqs.end();
+}
+
+function ksPing() {
+    let urllocal = new URL("http://127.0.0.1:8081");
+    var optionslocal = {
+        path: "/INFO",
+        host: urllocal.hostname,
+        port: urllocal.port,
+        method: 'GET'
+    };
+
+    let reqslocal = http.request(optionslocal, function (incoming) {
+        let response = "";
+        incoming.setEncoding('utf8');
+        incoming.on('data', (chunk) => {
+            response += chunk;
+        });
+        incoming.on('end', () => {
+            let json = JSON.parse(response);
+            sessiondata.track = json.track;
+            sessiondata.clients = json.clients;
+            sessiondata.timeleft = json.timeleft;
+            sessiondata.session = json.session;
+        });
+    });
+
+    reqslocal.end();
+
+    let url = new URL("http://93.57.10.21/");
+    var options = {
+        path: "/lobby.ashx/ping?session="+sessiondata.session+"&timeleft="+sessiondata.timeleft+"&port=9600&clients="+sessiondata.clients+"&track="+sessiondata.track+"&pickup=0",
+        host: url.hostname,
+        port: url.port,
+        method: 'GET'
+    };
+    console.log(options.path);
+
+    let reqs = http.request(options, function (incoming) {
+        let response = "";
+        incoming.setEncoding('utf8');
+        incoming.on('data', (chunk) => {
+            response += chunk;
+        });
+        incoming.on('end', () => {
+            console.log("ksPing: " + response);
+        });
+    });
+
     reqs.end();
 }
 
 function getPath(obj) {
-    let url = "/lobby.ashx/register?name=Shuffle+Racing&port=" + obj.port + "&tcp_port=" + obj.tport + "&http_port" + obj.cport + "&max_clients=" + obj.maxclients + "&track=" + obj.track + "&cars=__temp&timeofday=" + obj.timeofday + "&sessions=" + obj.sessiontypes.join(",") + "&durations=" + obj.durations.join(",") + "&password=" + (obj.pass ? 1 : 0) + "&version=202&pickup=" + (obj.pickup ? 1 : 0) + "&autoclutch=0&abs=1&tc=1&stability=0&legal_tyres=&fixed_setup=0&timed=0&extra=0&pit=0&inverted=0";
+    let url = "/lobby.ashx/register?name=Shuffle+Racing&port=" + obj.port + "&tcp_port=" + obj.tport + "&http_port=" + 8082 + "&max_clients=" + obj.maxclients + "&track=" + obj.track + "&cars=__temp&timeofday=" + obj.timeofday + "&sessions=" + obj.sessiontypes.join(",") + "&durations=" + obj.durations.join(",") + "&password=" + (obj.pass ? 1 : 0) + "&version=202&pickup=" + (obj.pickup ? 1 : 0) + "&autoclutch=0&abs=1&tc=1&stability=0&legal_tyres=&fixed_setup=0&timed=0&extra=0&pit=0&inverted=0";
     console.log(url);
     return url;
 }
