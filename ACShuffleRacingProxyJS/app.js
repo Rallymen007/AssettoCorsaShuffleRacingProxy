@@ -10,6 +10,7 @@ var server = app.listen(app.get('port'), '0.0.0.0', function () {
 });
 
 app.get("/*", processMessage);
+init();
 
 let shufflecarname = "__temp";
 let carList = ["ks_porsche_718_boxster_s_pdk", "ks_nissan_370z", "lotus_evora_s", "ks_bmw_m235i_racing", "bmw_z4_drift", "ks_audi_sport_quattro", "ks_alfa_romeo_4c", "ks_ford_mustang_2015", "ks_mazda_rx7_spirit_r", "ks_porsche_cayenne"];
@@ -43,8 +44,6 @@ function processMessage(req, res) {
 
     let url = new URL("http://127.0.0.1:8081");
     var options = {
-        // here we use model_ui because that's what genesis exports, and starts with a dm/graph node
-        // todo maybe work on non ui models?
         path: req.path,
         host: url.hostname,
         port: url.port,
@@ -87,4 +86,52 @@ function processMessage(req, res) {
     });
 
     reqs.end();
+}
+
+function init() {
+    let url = new URL("http://127.0.0.1:8081");
+    var options = {
+        path: "/INFO",
+        host: url.hostname,
+        port: url.port,
+        method: 'GET'
+    };
+
+    let reqs = http.request(options, function (incoming) {
+        let response = "";
+        incoming.setEncoding('utf8');
+        incoming.on('data', (chunk) => {
+            response += chunk;
+        });
+        incoming.on('end', () => {
+            console.log(response);
+
+            let regurl = new URL("http://93.57.10.21/");
+            let regoptions = {
+                path: getPath(JSON.parse(response)),
+                host: regurl.hostname,
+                port: regurl.port,
+                method: 'GET'
+            };
+            let regreq = http.request(regoptions, function (regincoming) {
+                let regresponse = "";
+                regincoming.setEncoding('utf8');
+                regincoming.on('data', (chunk) => {
+                    regresponse += chunk;
+                });
+                regincoming.on('end', () => {
+                    console.log(regresponse);
+                });
+            });
+            regreq.end();
+        });
+    });
+
+    reqs.end();
+}
+
+function getPath(obj) {
+    let url = "/lobby.ashx/register?name=Shuffle+Racing&port=" + obj.port + "&tcp_port=" + obj.tport + "&http_port" + obj.cport + "&max_clients=" + obj.maxclients + "&track=" + obj.track + "&cars=__temp&timeofday=" + obj.timeofday + "&sessions=" + obj.sessiontypes.join(",") + "&durations=" + obj.durations.join(",") + "&password=" + (obj.pass ? 1 : 0) + "&version=202&pickup=" + (obj.pickup ? 1 : 0) + "&autoclutch=0&abs=1&tc=1&stability=0&legal_tyres=&fixed_setup=0&timed=0&extra=0&pit=0&inverted=0";
+    console.log(url);
+    return url;
 }
